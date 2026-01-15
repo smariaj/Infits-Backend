@@ -12,7 +12,8 @@ router.post("/", async (req, res) => {
     demographics,
     start_date,
     end_date,
-    agents = [],
+    status = "draft",
+    agent_ids = [],
     tags = [],
   } = req.body;
 
@@ -25,16 +26,16 @@ router.post("/", async (req, res) => {
     const [result] = await connection.execute(
       `
       INSERT INTO campaigns
-      (campaign_name, description, demographics, start_date, end_date)
-      VALUES (?, ?, ?, ?, ?)
+      (campaign_name, description, demographics, start_date, end_date, status)
+      VALUES (?, ?, ?, ?, ?, ?)
       `,
-      [campaign_name, description, demographics, start_date, end_date]
+      [campaign_name, description, demographics, start_date, end_date, status]
     );
 
     const campaignId = result.insertId;
 
     // 2️⃣ Assign agents
-    for (const agentId of agents) {
+    for (const agentId of agent_ids) {
       await connection.execute(
         `
         INSERT INTO campaign_agents (campaign_id, agent_id)
@@ -57,10 +58,40 @@ router.post("/", async (req, res) => {
 
     await connection.commit();
 
+    // Fetch assigned agents
+    const [agents] = await connection.execute(
+      `
+      SELECT u.id, u.name, u.profile_image
+      FROM campaign_agents ca
+      JOIN users u ON u.id = ca.agent_id
+      WHERE ca.campaign_id = ?
+      `,
+      [campaignId]
+    );
+
     res.status(201).json({
       success: true,
       message: "Campaign created successfully",
-      campaign_id: campaignId,
+      data: {
+        campaign: {
+          id: campaignId,
+          campaign_name,
+          description,
+          demographics,
+          start_date,
+          end_date,
+          status,
+          created_at: new Date(),
+        },
+        agents,
+        tags,
+        stats: {
+          total_calls: 0,
+          answered_calls: 0,
+          missed_calls: 0,
+          avg_duration: 0,
+        },
+      },
     });
   } catch (err) {
     await connection.rollback();
@@ -75,13 +106,15 @@ router.post("/", async (req, res) => {
 });
 
 /* =========================
-   GET ALL agent specific CAMPAIGNS
+   GET ALL CAMPAIGNS
+   (SAFE FOR ALL SCREENS)
 ========================= */
 router.get("/", async (req, res) => {
-  const { agentId } = req.query; // get agentId from query params
+  const { agentId } = req.query;
 
   try {
-    const [rows] = await db.execute(`
+    const [campaigns] = await db.execute(
+      `
       SELECT
         c.id,
         c.campaign_name,
@@ -95,14 +128,31 @@ router.get("/", async (req, res) => {
       FROM campaigns c
       LEFT JOIN campaign_agents ca ON ca.campaign_id = c.id
       LEFT JOIN campaign_tags ct ON ct.campaign_id = c.id
-      ${agentId ? 'WHERE ca.agent_id = ?' : ''}
+      ${agentId ? "WHERE ca.agent_id = ?" : ""}
       GROUP BY c.id
       ORDER BY c.created_at DESC
-    `, agentId ? [agentId] : []);
+      `,
+      agentId ? [agentId] : []
+    );
+
+    // Attach agents array (DOES NOT BREAK OLD SCREENS)
+    for (const campaign of campaigns) {
+      const [agents] = await db.execute(
+        `
+        SELECT u.id, u.name, u.profile_image
+        FROM campaign_agents ca
+        JOIN users u ON u.id = ca.agent_id
+        WHERE ca.campaign_id = ?
+        `,
+        [campaign.id]
+      );
+
+      campaign.agents = agents; // 👈 IMPORTANT
+    }
 
     res.json({
       success: true,
-      data: rows,
+      data: campaigns,
     });
   } catch (err) {
     console.error("Fetch campaigns error:", err);
@@ -120,7 +170,6 @@ router.get("/:id", async (req, res) => {
   const { id } = req.params;
 
   try {
-    // Campaign
     const [[campaign]] = await db.execute(
       `SELECT * FROM campaigns WHERE id = ?`,
       [id]
@@ -133,15 +182,9 @@ router.get("/:id", async (req, res) => {
       });
     }
 
-    // Agents
     const [agents] = await db.execute(
       `
-      SELECT
-        u.id,
-        u.name,
-        u.phone,
-        u.team,
-        u.profile_image
+      SELECT u.id, u.name, u.phone, u.team, u.profile_image
       FROM campaign_agents ca
       JOIN users u ON u.id = ca.agent_id
       WHERE ca.campaign_id = ?
@@ -149,9 +192,21 @@ router.get("/:id", async (req, res) => {
       [id]
     );
 
-    // Tags
     const [tags] = await db.execute(
       `SELECT tag FROM campaign_tags WHERE campaign_id = ?`,
+      [id]
+    );
+
+    const [stats] = await db.execute(
+      `
+      SELECT
+        COUNT(*) AS total_calls,
+        SUM(connected) AS answered_calls,
+        SUM(CASE WHEN type='missed' THEN 1 ELSE 0 END) AS missed_calls,
+        ROUND(AVG(duration), 2) AS avg_duration
+      FROM call_stats
+      WHERE campaign_id = ?
+      `,
       [id]
     );
 
@@ -160,7 +215,8 @@ router.get("/:id", async (req, res) => {
       data: {
         campaign,
         agents,
-        tags: tags.map(t => t.tag),
+        tags: tags.map((t) => t.tag),
+        stats: stats[0],
       },
     });
   } catch (err) {
@@ -205,10 +261,9 @@ router.put("/:id/status", async (req, res) => {
   }
 });
 
-/**
- * GET /campaigns/:id/stats
- * Returns call stats for a campaign
- */
+/* =========================
+   GET CAMPAIGN STATS
+========================= */
 router.get("/:id/stats", async (req, res) => {
   const { id } = req.params;
 
@@ -238,6 +293,5 @@ router.get("/:id/stats", async (req, res) => {
     });
   }
 });
-
 
 module.exports = router;

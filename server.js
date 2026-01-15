@@ -10,6 +10,10 @@ const callRoutes = require("./routes/callStats");
 const summaryRoutes = require("./routes/summary");
 const agentRoutes = require("./routes/agents");
 const campaignRoutes = require("./routes/campaigns");
+const dashboardRoutes = require("./routes/dashboard");
+const leadsRoutes = require("./routes/leads");
+const leadActivitiesRouter = require("./routes/lead_activities");
+
 
 
 
@@ -42,7 +46,9 @@ app.use("/call-stats", callRoutes);
 app.use("/call-stats/summary", summaryRoutes);
 app.use("/agents", agentRoutes);
 app.use("/campaigns",campaignRoutes);
-
+app.use("/dashboard", dashboardRoutes);
+app.use("/leads",leadsRoutes)
+app.use("/lead_activities", leadActivitiesRouter);
 
 /* =======================
    SOCKET.IO (NO DB LOGIC)

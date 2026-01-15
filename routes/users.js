@@ -3,46 +3,72 @@ const router = express.Router();
 const multer = require("multer");
 const path = require("path");
 const bcrypt = require("bcryptjs");
-const db = require("../db"); // Use promise wrapper for async/await
+const db = require("../db");
 
-// ---------------- Multer setup ----------------
+// ---------------- MULTER SETUP ----------------
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, "uploads/"),
-  filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname)),
+  destination: (req, file, cb) => {
+    cb(null, "uploads/");
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + path.extname(file.originalname));
+  },
 });
+
 const upload = multer({ storage });
 
-// ---------------- Add User Route ----------------
+// ---------------- ADD USER ----------------
 router.post("/add-user", upload.single("profile_image"), async (req, res) => {
   try {
-    const { name, email, phone, password, role, team, date_of_joining } = req.body;
+    const {
+      name,
+      email,
+      phone,
+      password,
+      role,
+      team,
+      date_of_joining,
+    } = req.body;
+
     const profile_image = req.file ? req.file.filename : null;
 
-    // Validate required fields
+    // Validation
     if (!name || !email || !password) {
-      return res.status(400).json({ success: false, message: "Name, email, and password required" });
+      return res.status(400).json({
+        success: false,
+        message: "Name, email and password are required",
+      });
     }
 
     // Check duplicate email
-    const [existing] = await db.query("SELECT id FROM users WHERE email = ?", [email]);
-    if (existing.length > 0) {
-      return res.status(400).json({ success: false, message: "Email already exists" });
+    const [existingUser] = await db.query(
+      "SELECT id FROM users WHERE email = ?",
+      [email]
+    );
+
+    if (existingUser.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Email already exists",
+      });
     }
 
     // Hash password
     const hashedPassword = bcrypt.hashSync(password, 10);
 
     // Insert user
-    const sql = `INSERT INTO users
+    const sql = `
+      INSERT INTO users
       (name, email, phone, password, role, team, date_of_joining, profile_image)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `;
 
     const [result] = await db.query(sql, [
       name,
       email,
       phone,
       hashedPassword,
-      role,
+      role || "agent",
       team,
       date_of_joining,
       profile_image,
@@ -53,9 +79,44 @@ router.post("/add-user", upload.single("profile_image"), async (req, res) => {
       message: "User added successfully",
       userId: result.insertId,
     });
-  } catch (err) {
-    console.error("Add user error:", err);
-    return res.status(500).json({ success: false, message: err.message });
+  } catch (error) {
+    console.error("Add user error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+// ---------------- GET ALL USERS ----------------
+router.get("/users", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT
+        id,
+        name,
+        email,
+        phone,
+        role,
+        team,
+        DATE_FORMAT(date_of_joining, '%b %d, %Y') AS date_of_joining,
+        status,
+        profile_image,
+        created_at
+      FROM users
+      ORDER BY created_at DESC
+    `);
+
+    return res.status(200).json({
+      success: true,
+      data: rows,
+    });
+  } catch (error) {
+    console.error("Get users error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 });
 
