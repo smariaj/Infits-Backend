@@ -10,6 +10,10 @@ const callRoutes = require("./routes/callStats");
 const summaryRoutes = require("./routes/summary");
 const agentRoutes = require("./routes/agents");
 const campaignRoutes = require("./routes/campaigns");
+const messageTemplateRoutes = require("./routes/messageTemplates");
+const agentPerformanceRoutes = require("./routes/agentPerformance");
+const dashboardRoutes = require("./routes/dashboard");
+
 
 
 
@@ -42,6 +46,9 @@ app.use("/call-stats", callRoutes);
 app.use("/call-stats/summary", summaryRoutes);
 app.use("/agents", agentRoutes);
 app.use("/campaigns",campaignRoutes);
+app.use("/api/message-templates", messageTemplateRoutes);
+app.use("/agent-performance", agentPerformanceRoutes);
+app.use("/dashboard", dashboardRoutes);
 
 
 /* =======================
