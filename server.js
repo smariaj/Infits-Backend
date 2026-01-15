@@ -13,12 +13,10 @@ const campaignRoutes = require("./routes/campaigns");
 const dashboardRoutes = require("./routes/dashboard");
 const leadsRoutes = require("./routes/leads");
 const leadActivitiesRouter = require("./routes/lead_activities");
-
-
-
+const messageTemplateRoutes = require("./routes/messageTemplates");
+const agentPerformanceRoutes = require("./routes/agentPerformance");
 
 const db = require("./db");
-
 const path = require("path");
 
 const app = express();
@@ -27,31 +25,37 @@ const server = http.createServer(app);
 /* =======================
    MIDDLEWARE
 ======================= */
-app.use(cors({
-  origin: "*",
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
-}));
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 /* =======================
-   ROUTES (DO NOT CHANGE)
+   ROUTES
 ======================= */
 app.use("/", authRoutes);
 app.use("/users", userRoutes);
 app.use("/call-stats", callRoutes);
 app.use("/call-stats/summary", summaryRoutes);
 app.use("/agents", agentRoutes);
-app.use("/campaigns",campaignRoutes);
+app.use("/campaigns", campaignRoutes);
+
 app.use("/dashboard", dashboardRoutes);
-app.use("/leads",leadsRoutes)
+app.use("/leads", leadsRoutes);
 app.use("/lead_activities", leadActivitiesRouter);
 
+app.use("/api/message-templates", messageTemplateRoutes);
+app.use("/agent-performance", agentPerformanceRoutes);
+
 /* =======================
-   SOCKET.IO (NO DB LOGIC)
+   SOCKET.IO
 ======================= */
 const io = new Server(server, {
   cors: {
