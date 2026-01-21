@@ -81,7 +81,7 @@ CREATE TABLE lead_activities (
     FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE
 );
 
-
+-----------------------------------------------
 CREATE TABLE message_templates (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -96,4 +96,64 @@ ADD COLUMN reset_token VARCHAR(255),
 ADD COLUMN reset_token_expiry BIGINT;
 
 ALTER TABLE users ADD accepting_calls BOOLEAN DEFAULT true;
+
+
+ALTER TABLE campaigns
+ADD COLUMN target INT NOT NULL DEFAULT 0,
+ADD COLUMN called INT NOT NULL DEFAULT 0;
+
+DELIMITER $$
+
+DROP TRIGGER IF EXISTS trg_sync_lead_status $$
+
+CREATE TRIGGER trg_sync_lead_status
+AFTER INSERT ON lead_activities
+FOR EACH ROW
+BEGIN
+  IF NEW.type = 'status'
+     AND NEW.description IS NOT NULL THEN
+
+    UPDATE leads
+    SET
+      status = TRIM(SUBSTRING_INDEX(NEW.description, 'to', -1)),
+      last_activity = NEW.created_at
+    WHERE id = NEW.lead_id;
+
+  END IF;
+END$$
+
+DELIMITER ;
+
+DELIMITER $$
+
+DROP TRIGGER IF EXISTS trg_update_campaign_called $$
+
+CREATE TRIGGER trg_update_campaign_called
+AFTER UPDATE ON leads
+FOR EACH ROW
+BEGIN
+  -- Lead moved from NOT-CALLED → CALLED
+  IF OLD.status IN ('New Lead', 'Fresh')
+     AND NEW.status NOT IN ('New Lead', 'Fresh') THEN
+
+    UPDATE campaigns
+    SET called = called + 1
+    WHERE id = NEW.campaign_id;
+
+  END IF;
+
+  -- Lead moved from CALLED → NOT-CALLED
+  IF OLD.status NOT IN ('New Lead', 'Fresh')
+     AND NEW.status IN ('New Lead', 'Fresh') THEN
+
+    UPDATE campaigns
+    SET called = GREATEST(called - 1, 0)
+    WHERE id = NEW.campaign_id;
+
+  END IF;
+END$$
+
+DELIMITER ;
+
+
 

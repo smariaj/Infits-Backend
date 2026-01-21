@@ -113,4 +113,66 @@ router.get("/recent-activity/:agentId", async (req, res) => {
   }
 });
 
+
+/* =========================
+   AGENT LIVE DASHBOARD
+   (NEW - DOES NOT AFFECT OLD ROUTES)
+========================= */
+router.get("/agent-live/:agentId", async (req, res) => {
+  const { agentId } = req.params;
+
+  try {
+    // 1️⃣ Lead counters
+    const [[stats]] = await db.execute(
+      `
+      SELECT
+        SUM(CASE WHEN status = 'Interested' THEN 1 ELSE 0 END) AS interestedLeads,
+        SUM(CASE WHEN status = 'New Lead' THEN 1 ELSE 0 END) AS freshLeads,
+        SUM(CASE WHEN status IN ('Interested','Call Back','Converted') THEN 1 ELSE 0 END) AS contactedLeads
+      FROM leads
+      WHERE assigned_agent_id = ?
+      `,
+      [agentId]
+    );
+
+    // 2️⃣ Recent activities (latest 3 leads for this agent)
+    const [activities] = await db.execute(
+      `
+      SELECT
+        name,
+        status,
+        created_at
+      FROM leads
+      WHERE assigned_agent_id = ?
+      ORDER BY created_at DESC
+      LIMIT 3
+      `,
+      [agentId]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        interestedLeads: stats.interestedLeads || 0,
+        freshLeads: stats.freshLeads || 0,
+        contactedLeads: stats.contactedLeads || 0,
+        recentActivities: activities.map(a => ({
+          name: a.name,
+          status: a.status,
+          time: a.created_at
+        }))
+      }
+    });
+
+  } catch (err) {
+    console.error("AGENT LIVE DASHBOARD ERROR:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to load agent dashboard"
+    });
+  }
+});
+
+
+
 module.exports = router;

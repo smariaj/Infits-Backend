@@ -123,6 +123,7 @@ router.get("/", async (req, res) => {
         c.status,
         c.created_at,
         c.demographics,
+        c.called,
         COUNT(DISTINCT ca.agent_id) AS agent_count,
         COUNT(DISTINCT ct.id) AS tag_count
       FROM campaigns c
@@ -134,6 +135,7 @@ router.get("/", async (req, res) => {
       `,
       agentId ? [agentId] : []
     );
+
 
     // Attach agents array (DOES NOT BREAK OLD SCREENS)
     for (const campaign of campaigns) {

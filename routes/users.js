@@ -120,6 +120,92 @@ router.get("/users", async (req, res) => {
   }
 });
 
+// ---------------- UPDATE USER PROFILE ----------------
+// ---------------- UPDATE USER ----------------
+router.put(
+  "/update-user/:id",
+  upload.single("profile_image"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, email, phone } = req.body;
+
+      // Check if user exists
+      const [existing] = await db.query(
+        "SELECT id FROM users WHERE id = ?",
+        [id]
+      );
+
+      if (existing.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      const profile_image = req.file
+        ? req.file.filename
+        : null;
+
+      // Build dynamic update query
+      const fields = [];
+      const values = [];
+
+      if (name) {
+        fields.push("name = ?");
+        values.push(name);
+      }
+      if (email) {
+        fields.push("email = ?");
+        values.push(email);
+      }
+      if (phone) {
+        fields.push("phone = ?");
+        values.push(phone);
+      }
+      if (profile_image) {
+        fields.push("profile_image = ?");
+        values.push(profile_image);
+      }
+
+      if (fields.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "No data to update",
+        });
+      }
+
+      values.push(id);
+
+      const sql = `
+        UPDATE users
+        SET ${fields.join(", ")}
+        WHERE id = ?
+      `;
+
+      await db.query(sql, values);
+
+      return res.json({
+        success: true,
+        message: "Profile updated",
+        data: {
+          id,
+          name,
+          email,
+          phone,
+          profile_image,
+        },
+      });
+    } catch (error) {
+      console.error("Update user error:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+);
+
 
 module.exports = router;
 

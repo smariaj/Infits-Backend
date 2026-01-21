@@ -327,4 +327,93 @@ router.put("/:id/status", async (req, res) => {
   }
 });
 
+/* =========================
+   LOG LEAD CALL AND UPDATE CAMPAIGN PROGRESS
+========================= */
+router.post("/:id/log_call", async (req, res) => {
+  const leadId = req.params.id;
+  const { agent_id } = req.body;
+
+  if (!agent_id) {
+    return res.status(400).json({
+      success: false,
+      message: "agent_id is required",
+    });
+  }
+
+  try {
+    // 1️⃣ Insert lead activity
+    await db.execute(
+      `
+      INSERT INTO lead_activities
+      (lead_id, type, title, description, user)
+      VALUES (?, 'call', 'Call made', 'Lead called by agent', ?)
+      `,
+      [leadId, agent_id]
+    );
+
+    // 2️⃣ Update lead last activity
+    await db.execute(
+      `
+      UPDATE leads
+      SET last_activity = 'Call made'
+      WHERE id = ?
+      `,
+      [leadId]
+    );
+
+    // 3️⃣ Get the campaign id for this lead
+    const [[lead]] = await db.execute(
+      `SELECT campaign_id FROM leads WHERE id = ?`,
+      [leadId]
+    );
+
+    if (!lead) {
+      return res.status(404).json({
+        success: false,
+        message: "Lead not found",
+      });
+    }
+
+    const campaignId = lead.campaign_id;
+
+    // 4️⃣ Count how many leads of this campaign are called
+    const [[{ calledCount }]] = await db.execute(
+      `
+      SELECT COUNT(*) AS calledCount
+      FROM lead_activities la
+      JOIN leads l ON la.lead_id = l.id
+      WHERE l.campaign_id = ? AND la.type = 'call'
+      `,
+      [campaignId]
+    );
+
+    // 5️⃣ Update campaigns table progress column (optional if you have one)
+    await db.execute(
+      `
+      UPDATE campaigns
+      SET called = ?
+      WHERE id = ?
+      `,
+      [calledCount, campaignId]
+    );
+
+    res.json({
+      success: true,
+      message: "Call logged and campaign progress updated",
+      data: {
+        campaign_id: campaignId,
+        called: calledCount,
+      },
+    });
+  } catch (err) {
+    console.error("Log lead call error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to log call",
+    });
+  }
+});
+
+
 module.exports = router;
