@@ -123,11 +123,9 @@ router.get("/", async (req, res) => {
         c.status,
         c.created_at,
         c.demographics,
-        COUNT(DISTINCT ca.agent_id) AS agent_count,
-        COUNT(DISTINCT ct.id) AS tag_count
+        COUNT(DISTINCT ca.agent_id) AS agent_count
       FROM campaigns c
       LEFT JOIN campaign_agents ca ON ca.campaign_id = c.id
-      LEFT JOIN campaign_tags ct ON ct.campaign_id = c.id
       ${agentId ? "WHERE ca.agent_id = ?" : ""}
       GROUP BY c.id
       ORDER BY c.created_at DESC
@@ -135,7 +133,6 @@ router.get("/", async (req, res) => {
       agentId ? [agentId] : []
     );
 
-    // Attach agents array (DOES NOT BREAK OLD SCREENS)
     for (const campaign of campaigns) {
       const [agents] = await db.execute(
         `
@@ -146,22 +143,19 @@ router.get("/", async (req, res) => {
         `,
         [campaign.id]
       );
-
-      campaign.agents = agents; // 👈 IMPORTANT
+      campaign.agents = agents;
     }
 
-    res.json({
-      success: true,
-      data: campaigns,
-    });
+    res.json({ success: true, data: campaigns });
   } catch (err) {
     console.error("Fetch campaigns error:", err);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch campaigns",
+      message: err.message,
     });
   }
 });
+
 
 /* =========================
    GET SINGLE CAMPAIGN
@@ -224,6 +218,138 @@ router.get("/:id", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch campaign",
+    });
+  }
+});
+
+router.get("/:id/leads", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const [leads] = await db.execute(
+      `
+      SELECT
+        l.id,
+        IFNULL(l.name, '') AS name,
+        IFNULL(l.company, '') AS company,
+        IFNULL(l.phone, '') AS phone,
+        IFNULL(l.email, '') AS email,
+        IFNULL(l.status, 'New Lead') AS status,
+        IFNULL(u.name, 'Unassigned') AS telecaller,
+        IFNULL(
+          DATE_FORMAT(l.updated_at, '%b %d, %Y %h:%i %p'),
+          '-'
+        ) AS last_activity
+      FROM leads l
+      LEFT JOIN users u ON u.id = l.assigned_agent_id
+      WHERE l.campaign_id = ?
+      ORDER BY l.updated_at DESC
+      `,
+      [id]
+    );
+
+    res.json({
+      success: true,
+      data: leads,
+    });
+  } catch (err) {
+    console.error("Fetch leads error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch campaign leads",
+    });
+  }
+});
+router.post("/:id/leads/bulk", async (req, res) => {
+  const { id: campaignId } = req.params;
+  const { leads } = req.body;
+
+  if (!Array.isArray(leads) || leads.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: "No leads provided",
+    });
+  }
+
+  const connection = await db.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    for (const lead of leads) {
+      await connection.execute(
+        `
+        INSERT INTO leads
+        (campaign_id, name, company, phone, email, status)
+        VALUES (?, ?, ?, ?, ?, ?)
+        `,
+        [
+          campaignId,
+          lead.name ?? "",
+          lead.company ?? "",
+          lead.phone ?? "",
+          lead.email ?? "",
+          lead.status ?? "New Lead",
+        ]
+      );
+    }
+
+    await connection.commit();
+
+    res.json({
+      success: true,
+      message: "Leads saved successfully",
+      count: leads.length,
+    });
+  } catch (err) {
+    await connection.rollback();
+    console.error("Bulk save leads error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to save leads",
+    });
+  } finally {
+    connection.release();
+  }
+});
+
+router.post("/:id/leads", async (req, res) => {
+  const { id } = req.params;
+  const {
+    name,
+    company,
+    phone,
+    email,
+    status = "New Lead",
+    assigned_agent_id = null,
+  } = req.body;
+
+  if (!name || !phone) {
+    return res.status(400).json({
+      success: false,
+      message: "Name and phone are required",
+    });
+  }
+
+  try {
+    await db.execute(
+      `
+      INSERT INTO leads
+      (campaign_id, name, company, phone, email, status, assigned_agent_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      `,
+      [id, name, company, phone, email, status, assigned_agent_id]
+    );
+
+    res.json({
+      success: true,
+      message: "Lead added successfully",
+    });
+  } catch (err) {
+    console.error("Add lead error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to add lead",
     });
   }
 });

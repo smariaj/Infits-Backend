@@ -97,3 +97,20 @@ ADD COLUMN reset_token_expiry BIGINT;
 
 ALTER TABLE users ADD accepting_calls BOOLEAN DEFAULT true;
 
+ALTER TABLE call_stats ADD COLUMN user_uuid VARCHAR(50);
+ALTER TABLE daily_goals ADD COLUMN user_uuid VARCHAR(50);
+ALTER TABLE campaign_agents ADD COLUMN agent_uuid VARCHAR(50);
+ALTER TABLE leads ADD COLUMN assigned_agent_uuid VARCHAR(50);
+
+-- campaign id is imp for mapping
+-- have to chnage app also accordingly
+ALTER TABLE call_stats
+ADD COLUMN campaign_id INT NOT NULL AFTER user_id,
+ADD FOREIGN KEY (campaign_id) REFERENCES campaigns(id)
+ON DELETE CASCADE;
+
+
+
+-- for durations
+ALTER TABLE call_stats
+ADD COLUMN duration INT DEFAULT 0 COMMENT 'Call duration in seconds';

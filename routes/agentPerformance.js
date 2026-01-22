@@ -2,18 +2,22 @@ const express = require("express");
 const router = express.Router();
 const db = require("../db");
 
-// GET agent daily stats
+/* ===============================
+   AGENT DAILY PERFORMANCE
+=============================== */
 router.get("/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
-    const { date } = req.query;
+    const { date, campaignId } = req.query;
 
     if (!date) {
-      return res.status(400).json({ error: "Date is required" });
+      return res.status(400).json({
+        success: false,
+        message: "Date is required",
+      });
     }
 
-    const [rows] = await db.execute(
-      `
+    let query = `
       SELECT
         COUNT(*) AS totalCalls,
         SUM(connected = 1) AS connectedCalls,
@@ -21,18 +25,32 @@ router.get("/:userId", async (req, res) => {
         MIN(timestamp) AS firstCall,
         MAX(timestamp) AS lastCall,
         SUM(duration) AS totalDuration,
-        AVG(duration) AS avgDuration
+        ROUND(AVG(duration), 2) AS avgDuration
       FROM call_stats
       WHERE user_id = ?
-      AND DATE(timestamp) = ?
-      `,
-      [userId, date]
-    );
+        AND DATE(timestamp) = ?
+    `;
 
-    res.json(rows[0]);
+    const params = [userId, date];
+
+    // Optional campaign filter (logical & safe)
+    if (campaignId) {
+      query += " AND campaign_id = ?";
+      params.push(campaignId);
+    }
+
+    const [rows] = await db.execute(query, params);
+
+    res.json({
+      success: true,
+      data: rows[0],
+    });
   } catch (err) {
-    console.error("Error fetching agent stats:", err);
-    res.status(500).json({ error: "Server error" });
+    console.error("Error fetching agent performance:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch agent performance",
+    });
   }
 });
 

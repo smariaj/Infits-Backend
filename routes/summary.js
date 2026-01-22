@@ -1,41 +1,54 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const db = require('../db'); // MySQL connection
+const db = require("../db");
 
-router.get('/', async (req, res) => {
+/* ===============================
+   CALL SUMMARY (GLOBAL + AGENTS)
+=============================== */
+router.get("/", async (req, res) => {
   try {
+    /* ---------- OVERALL STATS ---------- */
     const [overall] = await db.execute(`
       SELECT
         COUNT(*) AS totalCalls,
-        SUM(connected) AS connected,
-        SUM(CASE WHEN type='missed' THEN 1 ELSE 0 END) AS missedCalls,
-        IFNULL(AVG(duration), 0) AS avgDuration
+        SUM(connected = 1) AS connectedCalls,
+        SUM(type = 'missed') AS missedCalls,
+        IFNULL(ROUND(AVG(duration), 2), 0) AS avgDuration
       FROM call_stats
     `);
 
+    /* ---------- AGENT-WISE STATS ---------- */
     const [agents] = await db.execute(`
-      SELECT u.id, u.name,
+      SELECT
+        u.id,
+        u.name,
         COUNT(cs.id) AS totalCalls,
-        SUM(cs.connected) AS connected,
-        SUM(CASE WHEN cs.type='missed' THEN 1 ELSE 0 END) AS missed,
-        IFNULL(AVG(cs.duration), 0) AS avgDuration
+        SUM(cs.connected = 1) AS connectedCalls,
+        SUM(cs.type = 'missed') AS missedCalls,
+        IFNULL(ROUND(AVG(cs.duration), 2), 0) AS avgDuration
       FROM users u
-      LEFT JOIN call_stats cs ON u.id = cs.user_id
-      GROUP BY u.id
+      LEFT JOIN call_stats cs
+        ON u.id = cs.user_id
+      GROUP BY u.id, u.name
     `);
 
     res.json({
-      totalCalls: overall[0].totalCalls,
-      connected: overall[0].connected,
-      missedCalls: overall[0].missedCalls,
-      avgDuration: overall[0].avgDuration,
-      agents: agents
+      success: true,
+      data: {
+        totalCalls: overall[0].totalCalls,
+        connectedCalls: overall[0].connectedCalls,
+        missedCalls: overall[0].missedCalls,
+        avgDuration: overall[0].avgDuration,
+        agents: agents,
+      },
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    console.error("Call summary error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to load call summary",
+    });
   }
 });
 
-// -------------------- Export router --------------------
 module.exports = router;

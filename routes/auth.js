@@ -2,21 +2,24 @@ const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const db = require("../db");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
+const db = require("../db");
 
 /* ===============================
-   EMAIL TRANSPORTER
+   EMAIL TRANSPORTER (GMAIL - FORCED SMTP)
 =============================== */
 const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: Number(process.env.EMAIL_PORT),
-  secure: false,
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true, // IMPORTANT for Gmail
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
+    pass: process.env.EMAIL_PASS, // Gmail App Password
   },
+  connectionTimeout: 10_000,
+  greetingTimeout: 10_000,
+  socketTimeout: 10_000,
 });
 
 /* ===============================
@@ -55,7 +58,7 @@ router.post("/login", async (req, res) => {
     }
 
     const token = jwt.sign(
-      { email: user.email, role: user.role },
+      { id: user.id, email: user.email, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -90,7 +93,6 @@ router.post("/login", async (req, res) => {
 router.post("/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
-
     if (!email) {
       return res.status(400).json({ error: "Email is required" });
     }
@@ -106,16 +108,21 @@ router.post("/forgot-password", async (req, res) => {
 
     const userId = users[0].id;
     const token = crypto.randomBytes(32).toString("hex");
-    const expiry = Date.now() + 15 * 60 * 1000;
+    const expiry = new Date(Date.now() + 15 * 60 * 1000);
 
     await db.query(
       "UPDATE users SET reset_token = ?, reset_token_expiry = ? WHERE id = ?",
       [token, expiry, userId]
     );
 
-    const resetLink = `${process.env.FRONTEND_RESET_URL}?token=${token}`;
+    const resetLink = `${process.env.FRONTEND_RESET_URL}?token=${encodeURIComponent(
+      token
+    )}`;
 
-    await transporter.sendMail({
+    // 🔥 VERIFY RIGHT BEFORE SENDING
+    await transporter.verify();
+
+    const info = await transporter.sendMail({
       from: `"Support" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: "Reset your password",
@@ -127,9 +134,11 @@ router.post("/forgot-password", async (req, res) => {
       `,
     });
 
+    console.log("✅ Email sent:", info.response);
+
     res.json({ message: "Password reset email sent" });
   } catch (err) {
-    console.error("Forgot password error:", err);
+    console.error("❌ Forgot password email error:", err);
     res.status(500).json({ error: "Failed to send reset email" });
   }
 });
@@ -159,7 +168,7 @@ router.post("/reset-password", async (req, res) => {
       WHERE reset_token = ?
         AND reset_token_expiry > ?
       `,
-      [token, Date.now()]
+      [token, new Date()]
     );
 
     if (users.length === 0) {

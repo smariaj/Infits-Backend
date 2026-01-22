@@ -3,6 +3,7 @@ const router = express.Router();
 const multer = require("multer");
 const path = require("path");
 const bcrypt = require("bcryptjs");
+const { v4: uuidv4 } = require("uuid");
 const db = require("../db");
 
 // ---------------- MULTER SETUP ----------------
@@ -53,31 +54,35 @@ router.post("/add-user", upload.single("profile_image"), async (req, res) => {
       });
     }
 
+    // Generate user ID
+    const userId = uuidv4();
+
     // Hash password
     const hashedPassword = bcrypt.hashSync(password, 10);
 
     // Insert user
     const sql = `
       INSERT INTO users
-      (name, email, phone, password, role, team, date_of_joining, profile_image)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      (id, name, email, phone, password, role, team, date_of_joining, profile_image)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
-    const [result] = await db.query(sql, [
+    await db.query(sql, [
+      userId,
       name,
       email,
       phone,
       hashedPassword,
       role || "agent",
-      team,
-      date_of_joining,
+      team || null,
+      date_of_joining || null,
       profile_image,
     ]);
 
     return res.status(200).json({
       success: true,
       message: "User added successfully",
-      userId: result.insertId,
+      userId,
     });
   } catch (error) {
     console.error("Add user error:", error);
@@ -89,7 +94,7 @@ router.post("/add-user", upload.single("profile_image"), async (req, res) => {
 });
 
 // ---------------- GET ALL USERS ----------------
-router.get("/users", async (req, res) => {
+router.get("/", async (req, res) => {
   try {
     const [rows] = await db.query(`
       SELECT
@@ -100,7 +105,7 @@ router.get("/users", async (req, res) => {
         role,
         team,
         DATE_FORMAT(date_of_joining, '%b %d, %Y') AS date_of_joining,
-        status,
+        accepting_calls,
         profile_image,
         created_at
       FROM users
@@ -120,7 +125,4 @@ router.get("/users", async (req, res) => {
   }
 });
 
-
 module.exports = router;
-
-
