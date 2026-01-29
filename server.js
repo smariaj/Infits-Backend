@@ -15,6 +15,8 @@ const leadsRoutes = require("./routes/leads");
 const leadActivitiesRouter = require("./routes/lead_activities");
 const messageTemplateRoutes = require("./routes/messageTemplates");
 const agentPerformanceRoutes = require("./routes/agentPerformance");
+const webDashboardRoutes = require("./routes/webdashboard");
+const webUsersRoutes = require("./routes/webUsers");
 
 const db = require("./db");
 const path = require("path");
@@ -40,12 +42,17 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 /* =======================
    ROUTES
 ======================= */
+
 app.use("/", authRoutes);
 app.use("/users", userRoutes);
 app.use("/call-stats", callRoutes);
 app.use("/call-stats/summary", summaryRoutes);
 app.use("/agents", agentRoutes);
 app.use("/campaigns", campaignRoutes);
+
+app.use("/web", webDashboardRoutes);
+app.use("/web", webUsersRoutes);
+
 
 app.use("/dashboard", dashboardRoutes);
 app.use("/leads", leadsRoutes);
