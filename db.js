@@ -5,7 +5,7 @@ const mysql = require("mysql2");
 const pool = mysql.createPool({
   host: "localhost",       // MySQL host
   user: "root",            // your MySQL username
-  password: "root", // your MySQL password
+  password: "1234", // your MySQL password
   database: "truecaller_db"  // your database name
 });
 

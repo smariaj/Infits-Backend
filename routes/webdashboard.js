@@ -2,57 +2,62 @@ const express = require("express");
 const router = express.Router();
 const db = require("../db");
 
-/* =================================================
-   WEB ADMIN DASHBOARD
-   Route: GET /web/dashboard
-================================================= */
-router.get("/dashboard", async (req, res) => {
+// GET /web/dashboard
+router.get("/", async (req, res) => {
   try {
-    // -------- SUMMARY --------
-    const [[summary]] = await db.execute(`
+    // =========================
+    // SUMMARY (TODAY)
+    // =========================
+    const [summaryRows] = await db.query(`
       SELECT
         COUNT(*) AS totalCalls,
-        SUM(connected = 1) AS connected,
-        SUM(connected = 0) AS missedCalls,
-        IFNULL(AVG(connected) * 3, 0) AS avgDuration
+        SUM(CASE WHEN connected = true THEN 1 ELSE 0 END) AS connected,
+        SUM(CASE WHEN type = 'missed' THEN 1 ELSE 0 END) AS missedCalls
       FROM call_stats
       WHERE DATE(timestamp) = CURDATE()
     `);
 
-    // -------- AGENT PERFORMANCE --------
-    const [agents] = await db.execute(`
+    const summary = summaryRows[0];
+
+    // =========================
+    // AGENT PERFORMANCE
+    // =========================
+    const [agentRows] = await db.query(`
       SELECT
         u.id,
         u.name,
-        COUNT(c.id) AS totalCalls,
-        SUM(c.connected = 1) AS connected,
-        SUM(c.connected = 0) AS missed,
-        IFNULL(AVG(c.connected) * 3, 0) AS avgDuration,
-        CASE
-          WHEN u.accepting_calls = 1 THEN 'Active'
-          ELSE 'Inactive'
-        END AS status
+        u.accepting_calls,
+        COUNT(cs.id) AS totalCalls,
+        SUM(CASE WHEN cs.connected = true THEN 1 ELSE 0 END) AS connected,
+        SUM(CASE WHEN cs.type = 'missed' THEN 1 ELSE 0 END) AS missed
       FROM users u
-      LEFT JOIN call_stats c ON u.id = c.user_id
+      LEFT JOIN call_stats cs
+        ON cs.user_id = u.id
+        AND DATE(cs.timestamp) = CURDATE()
       WHERE u.role = 'agent'
-      GROUP BY u.id, u.name, u.accepting_calls
+      GROUP BY u.id
+      ORDER BY u.name
     `);
+
+    const agents = agentRows.map((a) => ({
+      id: a.id,
+      name: a.name,
+      status: a.accepting_calls ? "Online" : "Offline",
+      totalCalls: a.totalCalls || 0,
+      connected: a.connected || 0,
+      missed: a.missed || 0,
+    }));
 
     res.json({
       success: true,
-      summary: {
-        totalCalls: summary.totalCalls || 0,
-        connected: summary.connected || 0,
-        missedCalls: summary.missedCalls || 0,
-        avgDuration: summary.avgDuration || 0,
-      },
+      summary,
       agents,
     });
   } catch (err) {
-    console.error("WEB DASHBOARD ERROR:", err);
+    console.error("Dashboard error:", err);
     res.status(500).json({
       success: false,
-      message: "Failed to load web dashboard",
+      message: "Dashboard data fetch failed",
     });
   }
 });

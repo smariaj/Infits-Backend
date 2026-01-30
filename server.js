@@ -17,6 +17,11 @@ const messageTemplateRoutes = require("./routes/messageTemplates");
 const agentPerformanceRoutes = require("./routes/agentPerformance");
 const webDashboardRoutes = require("./routes/webdashboard");
 const webUsersRoutes = require("./routes/webUsers");
+const webCampaignRoutes = require("./routes/webcampaigns");
+const webCampaignLeadsRoutes = require("./routes/webCampaignLeads");
+const webLeadActivityRoutes = require("./routes/webLeadActivity");
+const webAgentPerformanceRoutes = require("./routes/webAgentPerformance");
+
 
 const db = require("./db");
 const path = require("path");
@@ -50,8 +55,13 @@ app.use("/call-stats/summary", summaryRoutes);
 app.use("/agents", agentRoutes);
 app.use("/campaigns", campaignRoutes);
 
-app.use("/web", webDashboardRoutes);
+app.use("/web/dashboard", webDashboardRoutes);
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/web", webUsersRoutes);
+app.use("/web/campaigns", webCampaignRoutes);
+app.use("/web", webCampaignLeadsRoutes);
+app.use("/web", webAgentPerformanceRoutes);
+
 
 
 app.use("/dashboard", dashboardRoutes);
@@ -60,6 +70,8 @@ app.use("/lead_activities", leadActivitiesRouter);
 
 app.use("/api/message-templates", messageTemplateRoutes);
 app.use("/agent-performance", agentPerformanceRoutes);
+app.use("/web", webLeadActivityRoutes);
+
 
 /* =======================
    SOCKET.IO
@@ -99,3 +111,6 @@ const HOST = "0.0.0.0";
 server.listen(PORT, HOST, () => {
   console.log(`Server running at http://${HOST}:${PORT}`);
 });
+
+
+
