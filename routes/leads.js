@@ -78,7 +78,7 @@ router.post("/", async (req, res) => {
    BATCH CREATE LEADS WITH RANDOM ASSIGNMENT
 ========================= */
 router.post("/batch", async (req, res) => {
-  const { campaign_id, leads } = req.body; // leads = [{name, phone, email, company}, ...]
+  const { campaign_id, leads } = req.body;
 
   if (!campaign_id || !Array.isArray(leads) || leads.length === 0) {
     return res.status(400).json({
@@ -88,11 +88,13 @@ router.post("/batch", async (req, res) => {
   }
 
   try {
-    // 1. Fetch agents of this campaign
     const [agents] = await db.execute(
-      `SELECT u.id FROM users u
-       JOIN campaign_agents ca ON u.id = ca.agent_id
-       WHERE ca.campaign_id = ? AND u.status='active'`,
+      `
+      SELECT u.id
+      FROM users u
+      JOIN campaign_agents ca ON u.id = ca.agent_id
+      WHERE ca.campaign_id = ? AND u.status = 'active'
+      `,
       [campaign_id]
     );
 
@@ -103,10 +105,8 @@ router.post("/batch", async (req, res) => {
       });
     }
 
-    // 2. Shuffle leads
     const shuffledLeads = [...leads].sort(() => Math.random() - 0.5);
 
-    // 3. Assign leads round-robin to agents
     const assignedLeads = shuffledLeads.map((lead, idx) => {
       const agent = agents[idx % agents.length];
       return [
@@ -121,11 +121,12 @@ router.post("/batch", async (req, res) => {
       ];
     });
 
-    // 4. Insert all leads in batch
     await db.query(
-      `INSERT INTO leads
+      `
+      INSERT INTO leads
       (campaign_id, name, company, phone, email, status, assigned_agent_id, last_activity)
-      VALUES ?`,
+      VALUES ?
+      `,
       [assignedLeads]
     );
 
@@ -301,7 +302,7 @@ router.put("/:id/status", async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
-  if (!["New Lead","Interested","Call Back","Converted"].includes(status)) {
+  if (!["New Lead", "Interested", "Call Back", "Converted"].includes(status)) {
     return res.status(400).json({
       success: false,
       message: "Invalid status",
@@ -342,11 +343,11 @@ router.post("/:id/log_call", async (req, res) => {
   }
 
   try {
-    // 1️⃣ Insert lead activity
+    // 1️⃣ Insert lead activity (FIXED: user_id)
     await db.execute(
       `
       INSERT INTO lead_activities
-      (lead_id, type, title, description, user)
+      (lead_id, type, title, description, user_id)
       VALUES (?, 'call', 'Call made', 'Lead called by agent', ?)
       `,
       [leadId, agent_id]
@@ -362,7 +363,7 @@ router.post("/:id/log_call", async (req, res) => {
       [leadId]
     );
 
-    // 3️⃣ Get the campaign id for this lead
+    // 3️⃣ Get campaign id
     const [[lead]] = await db.execute(
       `SELECT campaign_id FROM leads WHERE id = ?`,
       [leadId]
@@ -377,7 +378,7 @@ router.post("/:id/log_call", async (req, res) => {
 
     const campaignId = lead.campaign_id;
 
-    // 4️⃣ Count how many leads of this campaign are called
+    // 4️⃣ Count calls
     const [[{ calledCount }]] = await db.execute(
       `
       SELECT COUNT(*) AS calledCount
@@ -388,7 +389,7 @@ router.post("/:id/log_call", async (req, res) => {
       [campaignId]
     );
 
-    // 5️⃣ Update campaigns table progress column (optional if you have one)
+    // 5️⃣ Update campaign progress
     await db.execute(
       `
       UPDATE campaigns
@@ -414,6 +415,5 @@ router.post("/:id/log_call", async (req, res) => {
     });
   }
 });
-
 
 module.exports = router;

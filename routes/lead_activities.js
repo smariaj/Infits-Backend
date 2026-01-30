@@ -18,10 +18,18 @@ router.get("/lead-activities", async (req, res) => {
   try {
     const [activities] = await db.execute(
       `
-      SELECT id, lead_id, type, title, description, user, created_at
-      FROM lead_activities
-      WHERE lead_id = ?
-      ORDER BY created_at DESC
+      SELECT
+        la.id,
+        la.lead_id,
+        la.type,
+        la.title,
+        la.description,
+        u.name AS user,
+        la.created_at
+      FROM lead_activities la
+      JOIN users u ON la.user_id = u.id
+      WHERE la.lead_id = ?
+      ORDER BY la.created_at DESC
       `,
       [lead_id]
     );
@@ -43,15 +51,17 @@ router.get("/lead-activities", async (req, res) => {
    CREATE NEW ACTIVITY
 ========================= */
 router.post("/lead-activities", async (req, res) => {
-  const { lead_id, type, title, description, user } = req.body;
+  const { lead_id, type, title, description, user_id, user } = req.body;
 
-  if (!lead_id || !type || !title || !user) {
+  // Validate required fields
+  if (!lead_id || !type || !title || !user_id || !user) {
     return res.status(400).json({
       success: false,
-      message: "lead_id, type, title, and user are required",
+      message: "lead_id, type, title, user_id, and user are required",
     });
   }
 
+  // Validate type
   if (!["call", "email", "note", "status"].includes(type)) {
     return res.status(400).json({
       success: false,
@@ -60,19 +70,28 @@ router.post("/lead-activities", async (req, res) => {
   }
 
   try {
+    // Insert into lead_activities with user name
     const [result] = await db.execute(
       `
-      INSERT INTO lead_activities (lead_id, type, title, description, user)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO lead_activities (lead_id, type, title, description, user_id, user)
+      VALUES (?, ?, ?, ?, ?, ?)
       `,
-      [lead_id, type, title, description || null, user]
+      [lead_id, type, title, description || null, user_id, user]
     );
 
+    // Fetch the newly created activity
     const [[activity]] = await db.execute(
       `
-      SELECT id, lead_id, type, title, description, user, created_at
-      FROM lead_activities
-      WHERE id = ?
+      SELECT
+        la.id,
+        la.lead_id,
+        la.type,
+        la.title,
+        la.description,
+        la.user,
+        la.created_at
+      FROM lead_activities la
+      WHERE la.id = ?
       `,
       [result.insertId]
     );
@@ -90,7 +109,6 @@ router.post("/lead-activities", async (req, res) => {
     });
   }
 });
-4
 
 
 module.exports = router;
